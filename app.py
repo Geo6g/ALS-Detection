@@ -263,23 +263,16 @@ def create_shap_plot():
 
 
 # -----------------------------------------------------------------------------
-# SESSION STATE INITIALIZATION
+# SESSION STATE INITIALIZATION (PRELOADED PATIENT DATA)
 # -----------------------------------------------------------------------------
-if "emg_file" not in st.session_state:
-    st.session_state.emg_file = None
-if "emg_filename" not in st.session_state:
-    st.session_state.emg_filename = None
-if "emg_df" not in st.session_state:
-    st.session_state.emg_df = None
-if "selected_emg_col" not in st.session_state:
-    st.session_state.selected_emg_col = None
+if "emg_df" not in st.session_state or st.session_state.emg_df is None:
+    st.session_state.emg_df = get_synthetic_emg()
+    st.session_state.emg_filename = "patient_emg_tibialis.csv"
+    st.session_state.selected_emg_col = "EMG_Signal_uV"
 
-if "us_file" not in st.session_state:
-    st.session_state.us_file = None
-if "us_filename" not in st.session_state:
-    st.session_state.us_filename = None
-if "us_image" not in st.session_state:
-    st.session_state.us_image = None
+if "us_image" not in st.session_state or st.session_state.us_image is None:
+    st.session_state.us_image = get_synthetic_ultrasound()
+    st.session_state.us_filename = "patient_ultrasound_bmode.png"
 
 # Probabilities & Weights
 if "demo_emg_prob" not in st.session_state:
@@ -328,164 +321,69 @@ with st.sidebar:
 
 
 # -----------------------------------------------------------------------------
-# 1. DATA INPUT PAGE (DEFAULT LANDING PAGE)
+# 1. DATA INPUT PAGE (PATIENT RECORD & SIGNAL INSPECTION)
 # -----------------------------------------------------------------------------
 if menu_option == "1. Data Input":
-    st.title("Data Ingestion & Inspection")
-    st.markdown("Upload multimodal patient recordings or load sample data for evaluation.")
-    
-    # Top Action Bar
-    btn_col1, btn_col2, _ = st.columns([1.6, 1.4, 4.0])
-    with btn_col1:
-        if st.button("Load Demo Data", use_container_width=True, type="primary"):
-            st.session_state.emg_df = get_synthetic_emg()
-            st.session_state.emg_filename = "patient_emg_sample.csv"
-            st.session_state.emg_file = "demo"
-            st.session_state.selected_emg_col = "EMG_Signal_uV"
-            
-            st.session_state.us_image = get_synthetic_ultrasound()
-            st.session_state.us_filename = "patient_us_bmode.png"
-            st.session_state.us_file = "demo"
-            st.rerun()
+    st.title("Patient Record & Signal Inspection")
+    st.markdown("Patient clinical profile, electrophysiological time-series, and structural sonogram scan.")
 
-    with btn_col2:
-        if st.button("Clear Data", use_container_width=True):
-            st.session_state.emg_df = None
-            st.session_state.emg_filename = None
-            st.session_state.emg_file = None
-            st.session_state.selected_emg_col = None
-            st.session_state.us_image = None
-            st.session_state.us_filename = None
-            st.session_state.us_file = None
-            st.rerun()
-
-    st.markdown("---")
+    # Patient Clinical Profile Card
+    st.markdown(
+        """
+        <div class="content-box" style="padding: 14px 18px; margin-bottom: 20px;">
+            <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; font-size: 0.86rem; color: #334155;">
+                <div><b>Patient ID:</b> <code>PATIENT-2024-ALS-042</code></div>
+                <div><b>Demographics:</b> 58 Y / Male</div>
+                <div><b>Target Muscle:</b> Tibialis Anterior (Right)</div>
+                <div><b>Clinical Protocol:</b> Multimodal Neuromuscular Evaluation</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     col1, col2 = st.columns(2, gap="large")
 
-    # Column 1: EMG CSV Input
+    # Column 1: EMG Signal Display
     with col1:
-        st.subheader("1. Electromyography (EMG) Signal")
-        st.caption("Upload surface EMG voltage time-series (.csv)")
-
-        uploaded_emg = st.file_uploader(
-            "Upload EMG CSV",
-            type=["csv", "txt"],
-            key="emg_uploader",
-            label_visibility="collapsed",
+        st.subheader("1. Electromyography (sEMG) Signal")
+        df = st.session_state.emg_df
+        col_name = st.session_state.selected_emg_col
+        st.markdown(
+            f"""
+            <div style="font-size:0.85rem; color:#334155; margin-bottom:8px;">
+                <b>Record:</b> <code>{st.session_state.emg_filename}</code> &nbsp;|&nbsp; 
+                <b>Sampling:</b> 1000 Hz ({df.shape[0]} samples) &nbsp;|&nbsp; 
+                <b>Channel:</b> <code>{col_name}</code>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
+        st.markdown("##### Raw Signal Waveform")
+        st.line_chart(df[col_name].head(1000), use_container_width=True)
 
-        if uploaded_emg is not None:
-            try:
-                df_loaded = pd.read_csv(uploaded_emg)
-                num_cols = df_loaded.select_dtypes(include=["float64", "int64", "float32"]).columns.tolist()
-                if len(num_cols) == 0:
-                    st.error("Uploaded file contains no numeric columns suitable for signal analysis.")
-                else:
-                    st.session_state.emg_file = uploaded_emg
-                    st.session_state.emg_filename = uploaded_emg.name
-                    st.session_state.emg_df = df_loaded
-                    if st.session_state.selected_emg_col not in num_cols:
-                        st.session_state.selected_emg_col = num_cols[0]
-            except Exception as e:
-                st.error(f"Failed to parse CSV file: {e}")
-
-        # Display preview if EMG data exists
-        if st.session_state.emg_df is not None:
-            df = st.session_state.emg_df
-            numeric_cols = df.select_dtypes(include=["float64", "int64", "float32"]).columns.tolist()
-            
-            st.markdown(
-                f"""
-                <div style="font-size:0.85rem; color:#334155; margin-bottom:8px;">
-                    <b>File:</b> <code>{st.session_state.emg_filename}</code> &nbsp;|&nbsp; 
-                    <b>Size:</b> {df.shape[0]} samples × {df.shape[1]} columns
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-            st.markdown("##### Raw Signal Waveform Preview")
-            if len(numeric_cols) > 0:
-                signal_cols = [c for c in numeric_cols if not any(term in c.lower() for term in ["time", "index", "sample", "ms", "sec"])]
-                if not signal_cols:
-                    signal_cols = numeric_cols
-
-                if len(signal_cols) > 1:
-                    current_col_idx = signal_cols.index(st.session_state.selected_emg_col) if st.session_state.selected_emg_col in signal_cols else 0
-                    selected_col = st.selectbox("Select Signal Channel", signal_cols, index=current_col_idx)
-                    st.session_state.selected_emg_col = selected_col
-                else:
-                    selected_col = signal_cols[0]
-                    st.session_state.selected_emg_col = selected_col
-                    st.markdown(f"<div style='font-size:0.85rem; color:#475569; margin-bottom:8px;'><b>Channel:</b> <code>{selected_col}</code></div>", unsafe_allow_html=True)
-                
-                st.line_chart(df[selected_col].head(1000), use_container_width=True)
-            else:
-                st.dataframe(df.head(10), use_container_width=True)
-        else:
-            st.markdown(
-                """
-                <div class="placeholder-panel">
-                    <div class="placeholder-title">No EMG Signal Loaded</div>
-                    <div>Upload an electromyography CSV file or click "Load Demo Data" above.</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-    # Column 2: Ultrasound Image Input
+    # Column 2: Ultrasound Scan Display
     with col2:
         st.subheader("2. Muscle Ultrasound Scan")
-        st.caption("Upload B-mode sonogram (.png, .jpg)")
-
-        uploaded_us = st.file_uploader(
-            "Upload Ultrasound Image",
-            type=["png", "jpg", "jpeg", "bmp", "tiff"],
-            key="us_uploader",
-            label_visibility="collapsed",
+        img = st.session_state.us_image
+        st.markdown(
+            f"""
+            <div style="font-size:0.85rem; color:#334155; margin-bottom:8px;">
+                <b>Record:</b> <code>{st.session_state.us_filename}</code> &nbsp;|&nbsp; 
+                <b>Resolution:</b> {img.size[0]} × {img.size[1]} px &nbsp;|&nbsp; 
+                <b>Format:</b> B-Mode Sonogram
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
-
-        if uploaded_us is not None:
-            try:
-                img_loaded = Image.open(uploaded_us)
-                st.session_state.us_file = uploaded_us
-                st.session_state.us_filename = uploaded_us.name
-                st.session_state.us_image = img_loaded
-            except Exception as e:
-                st.error(f"Failed to open image file: {e}")
-
-        # Display preview if ultrasound image exists
-        if st.session_state.us_image is not None:
-            img = st.session_state.us_image
-            st.markdown(
-                f"""
-                <div style="font-size:0.85rem; color:#334155; margin-bottom:8px;">
-                    <b>File:</b> <code>{st.session_state.us_filename}</code> &nbsp;|&nbsp; 
-                    <b>Resolution:</b> {img.size[0]} × {img.size[1]} px
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-            st.markdown("##### Sonogram Preview")
-            st.image(img, use_container_width=True, caption=f"Ultrasound Frame: {st.session_state.us_filename}")
-        else:
-            st.markdown(
-                """
-                <div class="placeholder-panel">
-                    <div class="placeholder-title">No Ultrasound Image Loaded</div>
-                    <div>Upload a B-mode muscle scan or click "Load Demo Data" above.</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+        st.markdown("##### Sonogram Frame Preview")
+        st.image(img, use_container_width=True, caption="Tibialis Anterior Cross-Section (Axial B-Mode)")
 
     st.markdown("---")
     st.markdown(
         """
         <div style="font-size:0.83rem; color:#64748b; text-align:center;">
-            Data stored in session state persists through <b>Analysis</b>, <b>Results</b>, and <b>Explainability</b>.
+            Patient records are automatically routed to the <b>Analysis</b>, <b>Results</b>, and <b>Explainability</b> pipelines.
         </div>
         """,
         unsafe_allow_html=True,
